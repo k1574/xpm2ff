@@ -1,0 +1,4 @@
+<$MKINCDIR/config
+PROGNAME = xpm2ff
+CFILES = main.c
+
