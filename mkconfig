@@ -1,4 +1,6 @@
 <$MKINCDIR/config
 PROGNAME = xpm2ff
+INCS = -I$INCDIR
+AFILES = $OBJDIR/ff.a
 CFILES = main.c
 
