@@ -4,8 +4,7 @@
 #include <string.h>
 #include <ff/ff.h>
 
-#define DEBUG 1
-#define D if(DEBUG)
+int toknum(char *s);
 
 enum {
 	LineSize = 512,
@@ -22,7 +21,7 @@ static Color *colors;
 static char *argv0;
 static FILE *infile;
 static char curline[LineSize];
-static int width, height, nchars, ncolors;
+static u16 width, height, nchars, ncolors;
 
 void
 usage(void)
@@ -42,7 +41,6 @@ char *
 rdline(void)
 {
 	char *ret = fgets(curline, sizeof(curline), infile);
-	printf("\"%s\", toknum = %d\n", curline, toknum(curline));
 	return ret ;
 }
 
@@ -88,11 +86,24 @@ toknum(char *s)
 }
 
 int
+clridx(char *s)
+{
+	int i;
+	for(i=0 ; i<ncolors ; ++i){
+		if(!strcmp(colors[i].c, s))
+			return i;
+	}
+
+	return -1 ;
+}
+
+int
 main(int argc, char *argv[])
 {
 	char *pstr;
+	u32 ww, wh;
 	char tokbuf[64];
-	int i;
+	int i, j, len, idx;
 	argv0 = argv[0] ;
 	if(argc>1) usage() ;
 
@@ -109,19 +120,49 @@ main(int argc, char *argv[])
 	if(!(width && height && nchars && ncolors))
 		wrongfmt("header values");
 
+	ww = width ;
+	wh = height ;
+
 	colors = malloc(sizeof(Color) * ncolors) ;
 	for(i=0 ; i<ncolors ; ++i){
 		if(!rdline() || toknum(curline) != 3){
 			wrongfmt("color");
 		}
 		pstr = curline + nchars ;
-		colors[i].c = malloc(nchars) ;
+
+		colors[i].c = malloc(nchars+1) ;
+		memcpy(colors[i].c, curline, nchars);
+		colors[i].c[nchars] = 0 ;
+
 		ff_colorname_to_pixel(&colors[i].p, gettok(tokbuf, curline, 2));
-		D printf("%d %d %d %d\n",
-			colors[i].p.r,
-			colors[i].p.g,
-			colors[i].p.b,
-			colors[i].p.a);
+	}
+
+	if(ff_is_little_endian()){
+		ff_swap_endian(&ww, 4);
+		ff_swap_endian(&wh, 4);
+		for(i=0 ; i<ncolors ; ++i)
+			ff_swap_pixel_endian(&colors[i].p);
+	}
+
+	printf("farbfeld");
+	fwrite(&ww, sizeof(ww), 1, stdout);
+	fwrite(&wh, sizeof(wh), 1, stdout);
+
+	for(i=0 ; i<height ; ++i){
+		if(!rdline())
+			wrongfmt("unexpected EOF");
+
+		len = strlen(curline) ;
+		if(len > nchars * width && curline[len -1]!='\n')
+			wrongfmt("pixel line");
+
+		for(j=0 ; j<width ; ++j){
+			memcpy(tokbuf, &curline[j*nchars], nchars);
+			tokbuf[nchars] = 0 ;
+			if((idx = clridx(tokbuf)) < 0)
+				wrongfmt("pixel");
+			fwrite(&colors[idx].p, sizeof(colors[idx].p), 1, stdout);
+		}
 	}
 	
 	return 0 ;
